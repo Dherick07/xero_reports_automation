@@ -5,13 +5,15 @@ Provides utilities for:
 - File naming with timestamps
 - File validation
 - Cleanup of old files
+- Excel file consolidation
 """
 
 import os
 import shutil
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import structlog
+from openpyxl import load_workbook, Workbook
 
 from app.config import get_settings
 
@@ -227,6 +229,140 @@ class FileManager:
             return False
         
         return True
+    
+    def consolidate_excel_files(
+        self,
+        file_paths: List[str],
+        output_filename: str,
+        sheet_names: Optional[List[str]] = None
+    ) -> str:
+        """
+        Consolidate multiple Excel files into a single file.
+        
+        Each source file's sheets are copied to the output file.
+        
+        Args:
+            file_paths: List of paths to Excel files to consolidate
+            output_filename: Name for the consolidated output file
+            sheet_names: Optional list of custom sheet names (one per file)
+                        
+        Returns:
+            Path to the consolidated file
+        """
+        if not file_paths:
+            raise ValueError("No files provided for consolidation")
+        
+        for path in file_paths:
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"File not found: {path}")
+        
+        logger.info("Consolidating Excel files", 
+                   file_count=len(file_paths),
+                   output=output_filename)
+        
+        output_wb = Workbook()
+        default_sheet = output_wb.active
+        
+        sheet_index = 0
+        for file_idx, file_path in enumerate(file_paths):
+            try:
+                source_wb = load_workbook(file_path, data_only=False)
+                
+                for source_sheet in source_wb.worksheets:
+                    if sheet_names and file_idx < len(sheet_names):
+                        if len(source_wb.worksheets) > 1:
+                            new_sheet_name = f"{sheet_names[file_idx]}_{source_sheet.title}"
+                        else:
+                            new_sheet_name = sheet_names[file_idx]
+                    else:
+                        base_name = os.path.splitext(os.path.basename(file_path))[0]
+                        short_base = base_name[:15] if len(base_name) > 15 else base_name
+                        new_sheet_name = f"{short_base}_{source_sheet.title}"
+                    
+                    new_sheet_name = self._sanitize_sheet_name(new_sheet_name)
+                    new_sheet_name = self._make_unique_sheet_name(output_wb, new_sheet_name)
+                    
+                    new_sheet = output_wb.create_sheet(title=new_sheet_name)
+                    self._copy_sheet_data(source_sheet, new_sheet)
+                    
+                    sheet_index += 1
+                    logger.debug("Copied sheet", 
+                               source=source_sheet.title,
+                               target=new_sheet_name)
+                
+                source_wb.close()
+                
+            except Exception as e:
+                logger.error("Error processing file", file=file_path, error=str(e))
+                raise
+        
+        if sheet_index > 0 and default_sheet.title == "Sheet":
+            output_wb.remove(default_sheet)
+        
+        output_path = os.path.join(self.download_dir, output_filename)
+        output_wb.save(output_path)
+        output_wb.close()
+        
+        logger.info("Consolidation complete", 
+                   output_path=output_path,
+                   total_sheets=sheet_index)
+        
+        return output_path
+    
+    def _sanitize_sheet_name(self, name: str) -> str:
+        """Sanitize a string for use as Excel sheet name (max 31 chars)."""
+        invalid_chars = '\\/*?:[]'
+        result = name
+        for char in invalid_chars:
+            result = result.replace(char, '_')
+        return result[:31]
+    
+    def _make_unique_sheet_name(self, workbook: Workbook, name: str) -> str:
+        """Ensure sheet name is unique in workbook."""
+        existing_names = [sheet.title for sheet in workbook.worksheets]
+        
+        if name not in existing_names:
+            return name
+        
+        counter = 1
+        while True:
+            suffix = f"_{counter}"
+            max_base_len = 31 - len(suffix)
+            new_name = f"{name[:max_base_len]}{suffix}"
+            if new_name not in existing_names:
+                return new_name
+            counter += 1
+    
+    def _copy_sheet_data(self, source_sheet, target_sheet) -> None:
+        """Copy all data and formatting from source sheet to target sheet."""
+        from openpyxl.cell.cell import MergedCell
+        
+        # Copy cell data first (before merging)
+        for row_idx, row in enumerate(source_sheet.iter_rows(), 1):
+            for col_idx, cell in enumerate(row, 1):
+                # Skip MergedCell objects - they don't have values
+                if isinstance(cell, MergedCell):
+                    continue
+                    
+                target_cell = target_sheet.cell(row=row_idx, column=col_idx)
+                target_cell.value = cell.value
+                
+                if cell.has_style:
+                    target_cell.font = cell.font.copy()
+                    target_cell.fill = cell.fill.copy()
+                    target_cell.border = cell.border.copy()
+                    target_cell.alignment = cell.alignment.copy()
+                    target_cell.number_format = cell.number_format
+        
+        # Copy merged cells after data
+        for merged_range in source_sheet.merged_cells.ranges:
+            target_sheet.merge_cells(str(merged_range))
+        
+        for col_letter, col_dim in source_sheet.column_dimensions.items():
+            target_sheet.column_dimensions[col_letter].width = col_dim.width
+        
+        for row_num, row_dim in source_sheet.row_dimensions.items():
+            target_sheet.row_dimensions[row_num].height = row_dim.height
 
 
 # Singleton instance

@@ -46,6 +46,16 @@ class BatchDownloadRequest(BaseModel):
     )
 
 
+class ConsolidatedReportRequest(BaseModel):
+    """Request model for consolidated report download (Activity Statement + Payroll Summary)."""
+    tenant_id: str = Field(..., description="Xero tenant ID")
+    tenant_name: str = Field(..., description="Xero tenant/organisation name")
+    month: int = Field(..., ge=1, le=12, description="Month (1-12)")
+    year: int = Field(..., ge=2020, le=2100, description="Year")
+    period: Optional[str] = Field(None, description="Activity Statement period (e.g., 'October 2025'). If not provided, derived from month/year")
+    find_unfiled: bool = Field(False, description="Find unfiled/draft activity statements")
+
+
 async def _ensure_authenticated(db: AsyncSession) -> tuple[bool, dict]:
     """Ensure browser is authenticated with Xero."""
     browser_manager = await BrowserManager.get_instance()
@@ -199,6 +209,140 @@ async def download_payroll_summary(
     await _log_download(db, client.id if client else None, "payroll_activity_summary", result)
     
     return result
+
+
+@router.post("/consolidated")
+async def download_consolidated_report(
+    request: ConsolidatedReportRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Download both Activity Statement and Payroll Activity Summary, then consolidate into a single Excel file.
+    
+    Workflow:
+    1. Downloads Activity Statement for the specified period
+    2. Downloads Payroll Activity Summary for the specified month/year
+    3. Consolidates both reports into a single Excel file with multiple sheets
+    4. Returns the consolidated file path
+    """
+    import calendar
+    from app.services.file_manager import get_file_manager
+    
+    period = request.period or f"{calendar.month_name[request.month]} {request.year}"
+    
+    logger.info(
+        "Consolidated report download requested",
+        tenant_id=request.tenant_id,
+        tenant_name=request.tenant_name,
+        month=request.month,
+        year=request.year,
+        period=period
+    )
+    
+    is_auth, auth_error = await _ensure_authenticated(db)
+    if not is_auth:
+        return {"success": False, **auth_error}
+    
+    browser_manager = await BrowserManager.get_instance()
+    automation = XeroAutomation(browser_manager)
+    file_manager = get_file_manager()
+    
+    results = {
+        "success": False,
+        "tenant_name": request.tenant_name,
+        "period": period,
+        "activity_statement": None,
+        "payroll_summary": None,
+        "consolidated_file": None,
+        "errors": []
+    }
+    
+    downloaded_files = []
+    sheet_names = []
+    
+    # Step 1: Download Activity Statement
+    logger.info("Step 1/3: Downloading Activity Statement...")
+    activity_result = await automation.download_activity_statement(
+        tenant_name=request.tenant_name,
+        find_unfiled=request.find_unfiled,
+        period=period
+    )
+    
+    results["activity_statement"] = activity_result
+    
+    if activity_result.get("success"):
+        downloaded_files.append(activity_result["file_path"])
+        sheet_names.append("Activity_Statement")
+        logger.info("Activity Statement downloaded successfully")
+    else:
+        results["errors"].append(f"Activity Statement failed: {activity_result.get('error')}")
+        logger.error("Activity Statement download failed", error=activity_result.get("error"))
+    
+    client_result = await db.execute(
+        select(Client).where(Client.tenant_id == request.tenant_id)
+    )
+    client = client_result.scalar_one_or_none()
+    await _log_download(db, client.id if client else None, "activity_statement", activity_result)
+    
+    # Step 2: Download Payroll Activity Summary
+    logger.info("Step 2/3: Downloading Payroll Activity Summary...")
+    payroll_result = await automation.download_payroll_activity_summary(
+        tenant_name=request.tenant_name,
+        month=request.month,
+        year=request.year
+    )
+    
+    results["payroll_summary"] = payroll_result
+    
+    if payroll_result.get("success"):
+        downloaded_files.append(payroll_result["file_path"])
+        sheet_names.append("Payroll_Summary")
+        logger.info("Payroll Activity Summary downloaded successfully")
+    else:
+        results["errors"].append(f"Payroll Summary failed: {payroll_result.get('error')}")
+        logger.error("Payroll Summary download failed", error=payroll_result.get("error"))
+    
+    await _log_download(db, client.id if client else None, "payroll_activity_summary", payroll_result)
+    
+    # Step 3: Consolidate files
+    if downloaded_files:
+        logger.info("Step 3/3: Consolidating reports...")
+        try:
+            # Format: Consolidated_BAS_Report_{Month_Year}.xlsx
+            month_year = f"{calendar.month_name[request.month]}_{request.year}"
+            consolidated_filename = f"Consolidated_BAS_Report_{month_year}.xlsx"
+            
+            consolidated_path = file_manager.consolidate_excel_files(
+                file_paths=downloaded_files,
+                output_filename=consolidated_filename,
+                sheet_names=sheet_names
+            )
+            
+            results["consolidated_file"] = {
+                "file_path": consolidated_path,
+                "file_name": consolidated_filename,
+                "sheets_count": len(downloaded_files)
+            }
+            
+            results["success"] = True
+            logger.info("Consolidation complete", file=consolidated_filename)
+            
+        except Exception as e:
+            results["errors"].append(f"Consolidation failed: {str(e)}")
+            logger.error("Consolidation failed", error=str(e))
+            results["success"] = len(downloaded_files) > 0
+    else:
+        results["errors"].append("No files were downloaded successfully")
+    
+    consolidated_log_result = {
+        "success": results["success"],
+        "file_path": results["consolidated_file"]["file_path"] if results["consolidated_file"] else None,
+        "file_name": results["consolidated_file"]["file_name"] if results["consolidated_file"] else None,
+        "error": "; ".join(results["errors"]) if results["errors"] else None
+    }
+    await _log_download(db, client.id if client else None, "consolidated_report", consolidated_log_result)
+    
+    return results
 
 
 @router.post("/batch")
