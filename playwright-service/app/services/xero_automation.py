@@ -596,7 +596,8 @@ class XeroAutomation:
         self,
         tenant_name: str,
         month: Optional[int] = None,
-        year: Optional[int] = None
+        year: Optional[int] = None,
+        tenant_shortcode: str = None
     ) -> dict:
         """
         Download the Payroll Activity Summary report.
@@ -614,6 +615,7 @@ class XeroAutomation:
             tenant_name: Name of the tenant (for file naming)
             month: Month (1-12), defaults to last month
             year: Year, defaults to current/last year based on month
+            tenant_shortcode: Tenant shortcode for URL-based navigation (preserves tenant context)
             
         Returns:
             Dict with success status and file path
@@ -640,11 +642,19 @@ class XeroAutomation:
                 end_date=end_date
             )
             
-            # Navigate to Xero dashboard first to ensure we're on the right page
+            # Navigate to tenant-specific homepage to ensure correct tenant context
             current_url = self.page.url
-            logger.info(f"Current URL: {current_url}")
+            logger.info(f"Current URL before navigation: {current_url}")
             
-            if "xero.com" not in current_url:
+            # Always navigate to tenant-specific URL if shortcode provided
+            # This ensures we're on the correct tenant before downloading
+            if tenant_shortcode:
+                tenant_url = f"https://go.xero.com/app/!{tenant_shortcode}/homepage"
+                logger.info(f"Tenant shortcode provided: {tenant_shortcode}, navigating to: {tenant_url}")
+                # Always navigate to ensure correct tenant context
+                await self.page.goto(tenant_url, wait_until="domcontentloaded", timeout=60000)
+                logger.info(f"Navigated to tenant URL, new URL: {self.page.url}")
+            elif "xero.com" not in current_url:
                 await self.page.goto(XERO_URLS["dashboard"], wait_until="domcontentloaded", timeout=60000)
             
             # Wait for page to fully load
@@ -762,7 +772,8 @@ class XeroAutomation:
         self,
         tenant_name: str,
         find_unfiled: bool = True,
-        period: str = "October 2025"
+        period: str = "October 2025",
+        tenant_shortcode: str = None
     ) -> dict:
         """
         Download the Activity Statement (BAS Report).
@@ -778,20 +789,27 @@ class XeroAutomation:
             tenant_name: Name of the tenant (for file naming)
             find_unfiled: If True, look for draft/unfiled statements
             period: Period to select (e.g., "October 2025")
+            tenant_shortcode: Tenant shortcode for URL-based navigation (preserves tenant context)
             
         Returns:
             Dict with success status and file path
         """
         try:
-            logger.info(f"Downloading Activity Statement for {tenant_name}, period: {period}")
+            logger.info(f"Downloading Activity Statement for {tenant_name}, period: {period}, shortcode: {tenant_shortcode}")
             
-            # Navigate to Xero homepage first to ensure we're on the right page
-            # Use the homepage URL pattern from codegen: /app/{shortcode}/homepage
+            # Navigate to tenant-specific homepage to ensure correct tenant context
             current_url = self.page.url
-            logger.info(f"Current URL: {current_url}")
+            logger.info(f"Current URL before navigation: {current_url}")
             
-            # If not on Xero, navigate to dashboard
-            if "xero.com" not in current_url:
+            # Always navigate to tenant-specific URL if shortcode provided
+            # This ensures we're on the correct tenant before downloading
+            if tenant_shortcode:
+                tenant_url = f"https://go.xero.com/app/!{tenant_shortcode}/homepage"
+                logger.info(f"Tenant shortcode provided: {tenant_shortcode}, navigating to: {tenant_url}")
+                # Always navigate to ensure correct tenant context
+                await self.page.goto(tenant_url, wait_until="domcontentloaded", timeout=60000)
+                logger.info(f"Navigated to tenant URL, new URL: {self.page.url}")
+            elif "xero.com" not in current_url:
                 await self.page.goto(XERO_URLS["dashboard"], wait_until="domcontentloaded", timeout=60000)
             
             # Wait for the page to fully load - Xero is a heavy SPA

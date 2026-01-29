@@ -246,11 +246,12 @@ async def download_consolidated_report(
     sheet_names = []
     
     # Step 1: Download Activity Statement
-    logger.info("Step 1/3: Downloading Activity Statement...")
+    logger.info(f"Step 1/3: Downloading Activity Statement... tenant_shortcode={request.tenant_shortcode}")
     activity_result = await automation.download_activity_statement(
         tenant_name=request.tenant_name,
         find_unfiled=request.find_unfiled,
-        period=period
+        period=period,
+        tenant_shortcode=request.tenant_shortcode
     )
     
     results["activity_statement"] = activity_result
@@ -274,7 +275,8 @@ async def download_consolidated_report(
     payroll_result = await automation.download_payroll_activity_summary(
         tenant_name=request.tenant_name,
         month=request.month,
-        year=request.year
+        year=request.year,
+        tenant_shortcode=request.tenant_shortcode
     )
     
     results["payroll_summary"] = payroll_result
