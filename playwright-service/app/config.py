@@ -26,6 +26,18 @@ class Settings(BaseSettings):
     # Optional: n8n webhook for notifications
     n8n_webhook_url: str | None = None
     
+    # Xero credentials for automated login
+    xero_email: str | None = None
+    xero_password: str | None = None
+    
+    # Xero security question answers (for MFA bypass)
+    # Question 1: "As a child, what did you want to be when you grew up?"
+    xero_security_answer_1: str | None = None
+    # Question 2: "What is your most disliked holiday?"
+    xero_security_answer_2: str | None = None
+    # Question 3: "What is your dream job?"
+    xero_security_answer_3: str | None = None
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

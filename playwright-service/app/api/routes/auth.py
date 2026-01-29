@@ -235,3 +235,77 @@ async def delete_session(db: AsyncSession = Depends(get_db)):
             "success": False,
             "error": "Failed to delete session"
         }
+
+
+@router.post("/automated-login")
+async def automated_login(db: AsyncSession = Depends(get_db)):
+    """
+    Perform fully automated login to Xero.
+    
+    Uses configured credentials (XERO_EMAIL, XERO_PASSWORD) and security
+    question answers (XERO_SECURITY_ANSWER_1/2/3) to log in without
+    manual intervention.
+    
+    This endpoint:
+    1. Navigates to Xero login page
+    2. Enters email and password
+    3. Selects security questions as MFA method
+    4. Answers 1, 2, or 3 security questions dynamically
+    5. Saves the session cookies to the database
+    
+    Returns:
+        Dict with login status, current tenant, and session info
+    """
+    browser_manager = await BrowserManager.get_instance()
+    auth_service = XeroAuthService(browser_manager)
+    session_service = XeroSessionService(db)
+    
+    # Perform automated login
+    result = await auth_service.automated_login()
+    
+    if not result.get("success"):
+        return result
+    
+    # Save cookies to database
+    cookies = result.get("cookies", [])
+    saved = await session_service.save_session(cookies)
+    
+    if not saved:
+        return {
+            "success": False,
+            "error": "Login succeeded but failed to save session to database"
+        }
+    
+    return {
+        "success": True,
+        "message": "Automated login successful and session saved",
+        "current_tenant": result.get("current_tenant"),
+        "current_url": result.get("current_url")
+    }
+
+
+@router.post("/logout")
+async def logout(db: AsyncSession = Depends(get_db)):
+    """
+    Log out from Xero.
+    
+    Clicks the user menu and logs out from the current Xero session.
+    Optionally clears the stored session from the database.
+    
+    Returns:
+        Dict with logout status
+    """
+    browser_manager = await BrowserManager.get_instance()
+    
+    if not browser_manager.is_initialized:
+        return {
+            "success": True,
+            "message": "Browser not initialized - no active session to logout from"
+        }
+    
+    auth_service = XeroAuthService(browser_manager)
+    
+    # Perform logout
+    result = await auth_service.logout()
+    
+    return result
