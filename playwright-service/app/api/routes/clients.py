@@ -35,6 +35,7 @@ async def list_clients(
                 "id": c.id,
                 "tenant_id": c.tenant_id,
                 "tenant_name": c.tenant_name,
+                "tenant_shortcode": c.tenant_shortcode,
                 "is_active": c.is_active,
                 "onedrive_folder": c.onedrive_folder,
                 "created_at": c.created_at.isoformat() if c.created_at else None,
@@ -61,6 +62,7 @@ async def get_client(
         "id": client.id,
         "tenant_id": client.tenant_id,
         "tenant_name": client.tenant_name,
+        "tenant_shortcode": client.tenant_shortcode,
         "is_active": client.is_active,
         "onedrive_folder": client.onedrive_folder,
         "created_at": client.created_at.isoformat() if client.created_at else None,
@@ -87,6 +89,7 @@ async def create_client(
     client = Client(
         tenant_id=request.tenant_id,
         tenant_name=request.tenant_name,
+        tenant_shortcode=request.tenant_shortcode,
         onedrive_folder=request.onedrive_folder,
         is_active=request.is_active
     )
@@ -104,6 +107,7 @@ async def create_client(
             "id": client.id,
             "tenant_id": client.tenant_id,
             "tenant_name": client.tenant_name,
+            "tenant_shortcode": client.tenant_shortcode,
             "is_active": client.is_active,
             "onedrive_folder": client.onedrive_folder,
         }
@@ -126,6 +130,8 @@ async def update_client(
     # Update fields if provided
     if request.tenant_name is not None:
         client.tenant_name = request.tenant_name
+    if request.tenant_shortcode is not None:
+        client.tenant_shortcode = request.tenant_shortcode
     if request.onedrive_folder is not None:
         client.onedrive_folder = request.onedrive_folder
     if request.is_active is not None:
@@ -143,6 +149,7 @@ async def update_client(
             "id": client.id,
             "tenant_id": client.tenant_id,
             "tenant_name": client.tenant_name,
+            "tenant_shortcode": client.tenant_shortcode,
             "is_active": client.is_active,
             "onedrive_folder": client.onedrive_folder,
         }

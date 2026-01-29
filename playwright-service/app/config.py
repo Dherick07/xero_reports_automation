@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     screenshot_dir: str = "/app/screenshots"
     session_dir: str = "/app/sessions"
     
+    # Screenshot settings
+    debug_screenshots: bool = False  # Set to True for development, False for production
+    screenshot_retention_days: int = 7  # Auto-delete screenshots older than this
+    
     # Logging
     log_level: str = "INFO"
     

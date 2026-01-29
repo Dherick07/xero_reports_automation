@@ -1,21 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
 import structlog
 
 from app.db.connection import get_db
 from app.services.browser_manager import BrowserManager
 from app.services.xero_auth import XeroAuthService
 from app.services.xero_session import XeroSessionService
+from app.models import SwitchTenantRequest
 
 router = APIRouter()
 logger = structlog.get_logger()
-
-
-class SwitchTenantRequest(BaseModel):
-    """Request model for tenant switching."""
-    tenant_name: str = Field(..., description="Name of the Xero tenant/organisation to switch to")
-    tenant_shortcode: str = Field(None, description="Tenant shortcode for URL-based switching (e.g., 'mkK34'). If provided, uses faster URL method.")
 
 
 @router.post("/setup")

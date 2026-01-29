@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS clients (
     id SERIAL PRIMARY KEY,
     tenant_id VARCHAR(255) UNIQUE NOT NULL,
     tenant_name VARCHAR(255) NOT NULL,
+    tenant_shortcode VARCHAR(50) UNIQUE,  -- URL shortcode for fast switching (e.g., "mkK34")
     is_active BOOLEAN DEFAULT true,
     onedrive_folder VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -70,9 +71,12 @@ CREATE TRIGGER update_xero_sessions_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert sample clients for testing (optional - comment out in production)
--- INSERT INTO clients (tenant_id, tenant_name, onedrive_folder) VALUES
---     ('sample-tenant-1', 'Sample Client 1', '/Xero Reports/Sample Client 1'),
---     ('sample-tenant-2', 'Sample Client 2', '/Xero Reports/Sample Client 2');
+-- INSERT INTO clients (tenant_id, tenant_name, tenant_shortcode, onedrive_folder) VALUES
+--     ('sample-tenant-1', 'Sample Client 1', 'abc123', '/Xero Reports/Sample Client 1'),
+--     ('sample-tenant-2', 'Sample Client 2', 'def456', '/Xero Reports/Sample Client 2');
+
+-- Add index for tenant_shortcode
+CREATE INDEX IF NOT EXISTS idx_clients_shortcode ON clients(tenant_shortcode);
 
 COMMENT ON TABLE clients IS 'Xero client tenants to process for report downloads';
 COMMENT ON TABLE xero_sessions IS 'Encrypted Xero session cookies (single row)';

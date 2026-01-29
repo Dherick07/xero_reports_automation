@@ -10,6 +10,7 @@ class Client(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(String(255), unique=True, nullable=False, index=True)
     tenant_name = Column(String(255), nullable=False)
+    tenant_shortcode = Column(String(50), unique=True, index=True)  # URL shortcode for fast switching (e.g., "mkK34")
     is_active = Column(Boolean, default=True, index=True)
     onedrive_folder = Column(String(500))
     created_at = Column(DateTime, server_default=func.now())

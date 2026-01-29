@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 import structlog
 import os
@@ -14,46 +13,17 @@ from app.services.browser_manager import BrowserManager
 from app.services.xero_automation import XeroAutomation
 from app.services.xero_session import XeroSessionService
 from app.services.xero_auth import XeroAuthService
+from app.models import (
+    ReportRequest,
+    PayrollReportRequest,
+    ConsolidatedReportRequest,
+    BatchDownloadRequest,
+)
 from sqlalchemy import select
 
 router = APIRouter()
 logger = structlog.get_logger()
 settings = get_settings()
-
-
-class ReportRequest(BaseModel):
-    """Request model for report downloads."""
-    tenant_id: str = Field(..., description="Xero tenant ID")
-    tenant_name: str = Field(..., description="Xero tenant/organisation name")
-    period: Optional[str] = Field(None, description="Report period")
-    find_unfiled: bool = Field(True, description="Find unfiled/draft statements")
-
-
-class PayrollReportRequest(BaseModel):
-    """Request model for payroll report downloads."""
-    tenant_id: str = Field(..., description="Xero tenant ID")
-    tenant_name: str = Field(..., description="Xero tenant/organisation name")
-    month: Optional[int] = Field(None, ge=1, le=12, description="Month (1-12)")
-    year: Optional[int] = Field(None, ge=2020, le=2100, description="Year")
-
-
-class BatchDownloadRequest(BaseModel):
-    """Request model for batch report downloads."""
-    tenant_ids: Optional[List[str]] = Field(None, description="List of tenant IDs to process (if None, process all active)")
-    reports: List[str] = Field(
-        default=["activity_statement", "payroll_summary"],
-        description="List of report types to download"
-    )
-
-
-class ConsolidatedReportRequest(BaseModel):
-    """Request model for consolidated report download (Activity Statement + Payroll Summary)."""
-    tenant_id: str = Field(..., description="Xero tenant ID")
-    tenant_name: str = Field(..., description="Xero tenant/organisation name")
-    month: int = Field(..., ge=1, le=12, description="Month (1-12)")
-    year: int = Field(..., ge=2020, le=2100, description="Year")
-    period: Optional[str] = Field(None, description="Activity Statement period (e.g., 'October 2025'). If not provided, derived from month/year")
-    find_unfiled: bool = Field(False, description="Find unfiled/draft activity statements")
 
 
 async def _ensure_authenticated(db: AsyncSession) -> tuple[bool, dict]:
@@ -220,10 +190,13 @@ async def download_consolidated_report(
     Download both Activity Statement and Payroll Activity Summary, then consolidate into a single Excel file.
     
     Workflow:
-    1. Downloads Activity Statement for the specified period
-    2. Downloads Payroll Activity Summary for the specified month/year
-    3. Consolidates both reports into a single Excel file with multiple sheets
-    4. Returns the consolidated file path
+    1. Switches to the specified tenant (if shortcode provided)
+    2. Downloads Activity Statement for the specified period
+    3. Downloads Payroll Activity Summary for the specified month/year
+    4. Consolidates both reports into a single Excel file with multiple sheets
+    5. Returns the consolidated file path
+    
+    This is the main endpoint for n8n integration.
     """
     import calendar
     from app.services.file_manager import get_file_manager
@@ -234,6 +207,7 @@ async def download_consolidated_report(
         "Consolidated report download requested",
         tenant_id=request.tenant_id,
         tenant_name=request.tenant_name,
+        tenant_shortcode=request.tenant_shortcode,
         month=request.month,
         year=request.year,
         period=period
@@ -246,6 +220,17 @@ async def download_consolidated_report(
     browser_manager = await BrowserManager.get_instance()
     automation = XeroAutomation(browser_manager)
     file_manager = get_file_manager()
+    
+    # Step 0: Switch tenant if shortcode provided
+    if request.tenant_shortcode:
+        logger.info(f"Switching to tenant: {request.tenant_name} (shortcode: {request.tenant_shortcode})")
+        switch_result = await automation.switch_tenant(request.tenant_name, request.tenant_shortcode)
+        if not switch_result.get("success"):
+            return {
+                "success": False,
+                "error": f"Failed to switch tenant: {switch_result.get('error')}",
+                "screenshot": switch_result.get("screenshot")
+            }
     
     results = {
         "success": False,

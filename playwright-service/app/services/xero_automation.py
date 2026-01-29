@@ -231,10 +231,14 @@ class XeroAutomation:
     - Downloading Payroll Activity Summaries
     """
     
-    def __init__(self, browser_manager: BrowserManager, debug_screenshots: bool = True):
+    def __init__(self, browser_manager: BrowserManager, debug_screenshots: bool = None):
         self.browser = browser_manager
         self.file_manager = get_file_manager()
-        self._debug_screenshots = debug_screenshots  # Enable by default for troubleshooting
+        # Use config setting if not explicitly provided
+        if debug_screenshots is None:
+            self._debug_screenshots = settings.debug_screenshots
+        else:
+            self._debug_screenshots = debug_screenshots
     
     @property
     def page(self) -> Page:
