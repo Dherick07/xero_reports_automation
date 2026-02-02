@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
 
 
@@ -10,6 +11,9 @@ class Settings(BaseSettings):
     
     # Encryption
     encryption_key: str = "your-32-byte-fernet-key-here-change-me"
+    
+    # API Security
+    api_key: str = "change-this-api-key-in-production"
     
     # Playwright
     playwright_timeout: int = 30000  # milliseconds
@@ -41,6 +45,22 @@ class Settings(BaseSettings):
     xero_security_answer_2: str | None = None
     # Question 3: "What is your dream job?"
     xero_security_answer_3: str | None = None
+    
+    @field_validator('encryption_key')
+    @classmethod
+    def validate_encryption_key(cls, v):
+        if v == "your-32-byte-fernet-key-here-change-me":
+            import warnings
+            warnings.warn("WARNING: Using default encryption key! Set ENCRYPTION_KEY in .env for production.")
+        return v
+    
+    @field_validator('api_key')
+    @classmethod
+    def validate_api_key(cls, v):
+        if v == "change-this-api-key-in-production":
+            import warnings
+            warnings.warn("WARNING: Using default API key! Set API_KEY in .env for production.")
+        return v
     
     class Config:
         env_file = ".env"

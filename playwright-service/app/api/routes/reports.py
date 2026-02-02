@@ -13,6 +13,7 @@ from app.services.browser_manager import BrowserManager
 from app.services.xero_automation import XeroAutomation
 from app.services.xero_session import XeroSessionService
 from app.services.xero_auth import XeroAuthService
+from app.api.dependencies import verify_api_key
 from app.models import (
     ReportRequest,
     PayrollReportRequest,
@@ -71,6 +72,7 @@ async def _log_download(
 @router.post("/activity-statement")
 async def download_activity_statement(
     request: ReportRequest,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -130,6 +132,7 @@ async def download_activity_statement(
 @router.post("/payroll-activity-summary")
 async def download_payroll_summary(
     request: PayrollReportRequest,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -190,6 +193,7 @@ async def download_payroll_summary(
 @router.post("/consolidated")
 async def download_consolidated_report(
     request: ConsolidatedReportRequest,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -341,6 +345,7 @@ async def download_consolidated_report(
 @router.post("/batch")
 async def batch_download(
     request: BatchDownloadRequest,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -406,11 +411,17 @@ async def batch_download(
 
 
 @router.get("/download/{filename}")
-async def download_file(filename: str):
+async def download_file(filename: str, api_key: str = Depends(verify_api_key)):
     """
     Download a previously generated report file.
     """
-    file_path = os.path.join(settings.download_dir, filename)
+    # Sanitize filename to prevent path traversal attacks
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(settings.download_dir, safe_filename)
+    
+    # Verify path is within download directory
+    if not os.path.abspath(file_path).startswith(os.path.abspath(settings.download_dir)):
+        raise HTTPException(status_code=400, detail="Invalid filename")
     
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -423,7 +434,7 @@ async def download_file(filename: str):
 
 
 @router.get("/files")
-async def list_downloaded_files():
+async def list_downloaded_files(api_key: str = Depends(verify_api_key)):
     """
     List all downloaded report files.
     """
@@ -443,6 +454,7 @@ async def list_downloaded_files():
 async def get_download_logs(
     limit: int = 50,
     status: Optional[str] = None,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """

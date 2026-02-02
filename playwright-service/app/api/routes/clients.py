@@ -9,6 +9,7 @@ import structlog
 from app.db.connection import get_db
 from app.db.models import Client
 from app.models.requests import ClientCreate, ClientUpdate
+from app.api.dependencies import verify_api_key
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -17,6 +18,7 @@ logger = structlog.get_logger()
 @router.get("/")
 async def list_clients(
     active_only: bool = True,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """List all clients/tenants."""
@@ -49,6 +51,7 @@ async def list_clients(
 @router.get("/{client_id}")
 async def get_client(
     client_id: int,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """Get a specific client by ID."""
@@ -73,6 +76,7 @@ async def get_client(
 @router.post("/")
 async def create_client(
     request: ClientCreate,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new client."""
@@ -118,6 +122,7 @@ async def create_client(
 async def update_client(
     client_id: int,
     request: ClientUpdate,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """Update an existing client."""
@@ -159,6 +164,7 @@ async def update_client(
 @router.delete("/{client_id}")
 async def delete_client(
     client_id: int,
+    api_key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db)
 ):
     """Delete a client (soft delete by setting is_active=False)."""

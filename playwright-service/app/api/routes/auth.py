@@ -6,6 +6,7 @@ from app.db.connection import get_db
 from app.services.browser_manager import BrowserManager
 from app.services.xero_auth import XeroAuthService
 from app.services.xero_session import XeroSessionService
+from app.api.dependencies import verify_api_key
 from app.models import SwitchTenantRequest
 
 router = APIRouter()
@@ -13,7 +14,7 @@ logger = structlog.get_logger()
 
 
 @router.post("/setup")
-async def setup_auth(db: AsyncSession = Depends(get_db)):
+async def setup_auth(api_key: str = Depends(verify_api_key), db: AsyncSession = Depends(get_db)):
     """
     Start manual login flow.
     Opens a visible browser for manual Xero authentication.
@@ -30,7 +31,7 @@ async def setup_auth(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/complete")
-async def complete_auth(db: AsyncSession = Depends(get_db)):
+async def complete_auth(api_key: str = Depends(verify_api_key), db: AsyncSession = Depends(get_db)):
     """
     Complete authentication and save session.
     Called after manual login to capture and store cookies.
@@ -72,7 +73,7 @@ async def complete_auth(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/status")
-async def auth_status(db: AsyncSession = Depends(get_db)):
+async def auth_status(api_key: str = Depends(verify_api_key), db: AsyncSession = Depends(get_db)):
     """
     Check if current session is valid.
     
@@ -120,7 +121,7 @@ async def auth_status(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/restore")
-async def restore_session(db: AsyncSession = Depends(get_db)):
+async def restore_session(api_key: str = Depends(verify_api_key), db: AsyncSession = Depends(get_db)):
     """
     Restore session from stored cookies.
     
@@ -158,7 +159,7 @@ async def restore_session(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/tenants")
-async def list_tenants(db: AsyncSession = Depends(get_db)):
+async def list_tenants(api_key: str = Depends(verify_api_key), db: AsyncSession = Depends(get_db)):
     """
     List available Xero tenants/organisations.
     
@@ -180,7 +181,7 @@ async def list_tenants(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/switch-tenant")
-async def switch_tenant(request: SwitchTenantRequest, db: AsyncSession = Depends(get_db)):
+async def switch_tenant(request: SwitchTenantRequest, api_key: str = Depends(verify_api_key), db: AsyncSession = Depends(get_db)):
     """
     Switch to a specified Xero tenant/organisation.
     
@@ -234,7 +235,7 @@ async def switch_tenant(request: SwitchTenantRequest, db: AsyncSession = Depends
 
 
 @router.delete("/session")
-async def delete_session(db: AsyncSession = Depends(get_db)):
+async def delete_session(api_key: str = Depends(verify_api_key), db: AsyncSession = Depends(get_db)):
     """
     Delete the stored session.
     
@@ -257,7 +258,7 @@ async def delete_session(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/automated-login")
-async def automated_login(db: AsyncSession = Depends(get_db)):
+async def automated_login(api_key: str = Depends(verify_api_key), db: AsyncSession = Depends(get_db)):
     """
     Perform fully automated login to Xero.
     
@@ -304,7 +305,7 @@ async def automated_login(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/logout")
-async def logout(db: AsyncSession = Depends(get_db)):
+async def logout(api_key: str = Depends(verify_api_key), db: AsyncSession = Depends(get_db)):
     """
     Log out from Xero.
     
