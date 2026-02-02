@@ -296,6 +296,19 @@ async def automated_login(api_key: str = Depends(verify_api_key), db: AsyncSessi
             "error": "Login succeeded but failed to save session to database"
         }
     
+    # Switch to headless mode after successful login
+    # Close the headed browser and reinitialize in headless mode with saved cookies
+    logger.info("Switching browser to headless mode after successful login")
+    try:
+        await browser_manager.close()
+        await browser_manager.initialize(headless=True)
+        await browser_manager.set_cookies(cookies)
+        # Navigate to Xero to activate the session
+        await browser_manager.goto("https://go.xero.com", wait_until="networkidle")
+        logger.info("Browser switched to headless mode successfully")
+    except Exception as e:
+        logger.warning(f"Failed to switch to headless mode: {e}. Browser will remain in headed mode.")
+    
     return {
         "success": True,
         "message": "Automated login successful and session saved",
