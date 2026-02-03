@@ -15,6 +15,7 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=${DATABASE_URL}  # Use existing PostgreSQL connection string
+      - PGBOUNCER_MODE=${PGBOUNCER_MODE:-true}  # Set to true for Supabase/PgBouncer (disables prepared statements)
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - API_KEY=${API_KEY}
       - PLAYWRIGHT_TIMEOUT=30000

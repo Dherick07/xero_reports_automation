@@ -4,19 +4,30 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy import text, event
 import structlog
 import ssl
+import os
 
 from app.config import get_settings
 
 logger = structlog.get_logger()
 settings = get_settings()
 
-# Supabase connection configuration
-# The pooler (port 6543) uses PgBouncer which requires special handling for asyncpg
+# Supabase/PgBouncer connection configuration
+# The pooler uses PgBouncer which requires special handling for asyncpg (prepared statements disabled)
 _connect_args = {}
 _pool_class = None
-_is_supabase = "supabase.co" in settings.database_url or "pooler.supabase.com" in settings.database_url
+
+# Detect Supabase or PgBouncer usage:
+# - Check for any supabase-related string in the URL (handles regional poolers like aws-0-*.pooler.supabase.com)
+# - Allow explicit override via PGBOUNCER_MODE environment variable
+_db_url_lower = settings.database_url.lower()
+_is_supabase = (
+    "supabase" in _db_url_lower or 
+    "pooler" in _db_url_lower or
+    os.getenv("PGBOUNCER_MODE", "").lower() in ("true", "1", "yes")
+)
 
 if _is_supabase:
+    logger.info("PgBouncer/Supabase mode detected - disabling prepared statements")
     # Create SSL context that doesn't verify certificates (required for Supabase pooler)
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
