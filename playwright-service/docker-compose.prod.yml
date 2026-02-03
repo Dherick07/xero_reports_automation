@@ -22,6 +22,12 @@ services:
       - SCREENSHOT_DIR=/app/screenshots
       - SESSION_DIR=/app/sessions
       - LOG_LEVEL=INFO
+      # Xero credentials for automated login
+      - XERO_EMAIL=${XERO_EMAIL}
+      - XERO_PASSWORD=${XERO_PASSWORD}
+      - XERO_SECURITY_ANSWER_1=${XERO_SECURITY_ANSWER_1}
+      - XERO_SECURITY_ANSWER_2=${XERO_SECURITY_ANSWER_2}
+      - XERO_SECURITY_ANSWER_3=${XERO_SECURITY_ANSWER_3}
     volumes:
       - playwright_downloads:/app/downloads
       - playwright_screenshots:/app/screenshots
