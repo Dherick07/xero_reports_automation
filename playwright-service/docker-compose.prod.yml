@@ -16,6 +16,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}  # Use existing PostgreSQL connection string
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - API_KEY=${API_KEY}
       - PLAYWRIGHT_TIMEOUT=30000
       - DOWNLOAD_DIR=/app/downloads
       - SCREENSHOT_DIR=/app/screenshots
