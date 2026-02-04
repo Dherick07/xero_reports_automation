@@ -7,7 +7,7 @@ Handles:
 - Session expiry detection
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -77,9 +77,9 @@ class XeroSessionService:
             # Encrypt cookies
             encrypted_cookies = self.encryption.encrypt_json(cookies)
             
-            # Default expiry: 2 weeks from now
+            # Default expiry: 2 weeks from now (timezone-aware)
             if expires_at is None:
-                expires_at = datetime.utcnow() + timedelta(weeks=2)
+                expires_at = datetime.now(timezone.utc) + timedelta(weeks=2)
             
             # Check if session exists
             result = await self.db.execute(
@@ -91,7 +91,7 @@ class XeroSessionService:
                 # Update existing session
                 existing.cookies = encrypted_cookies
                 existing.expires_at = expires_at
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = datetime.now(timezone.utc)
             else:
                 # Create new session
                 session = XeroSession(
@@ -142,9 +142,14 @@ class XeroSessionService:
             return False
         
         expires_at = session_data.get("expires_at")
-        if expires_at and expires_at < datetime.utcnow():
-            logger.warning("Session has expired", expires_at=expires_at.isoformat())
-            return False
+        if expires_at:
+            # Handle both timezone-aware and naive datetimes
+            now = datetime.now(timezone.utc)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at < now:
+                logger.warning("Session has expired", expires_at=expires_at.isoformat())
+                return False
         
         return True
     
@@ -167,7 +172,12 @@ class XeroSessionService:
             }
         
         expires_at = session_data.get("expires_at")
-        is_expired = expires_at and expires_at < datetime.utcnow()
+        is_expired = False
+        if expires_at:
+            now = datetime.now(timezone.utc)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            is_expired = expires_at < now
         
         return {
             "has_session": True,

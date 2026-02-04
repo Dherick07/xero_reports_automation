@@ -87,6 +87,7 @@ class BrowserManager:
             self._playwright = await async_playwright().start()
             
             # Launch browser with appropriate settings
+            # Additional args help with Xvfb rendering and avoid detection
             self._browser = await self._playwright.chromium.launch(
                 headless=headless,
                 args=[
@@ -94,6 +95,13 @@ class BrowserManager:
                     "--disable-dev-shm-usage",
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
+                    "--disable-gpu",
+                    "--disable-software-rasterizer",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+                    "--window-size=1920,1080",
+                    "--start-maximized",
                 ]
             )
             

@@ -512,15 +512,31 @@ class XeroAuthService:
             await self.browser.initialize(headless=False)
             
             # Navigate to Xero login page
-            await self.browser.goto(XERO_LOGIN_URL, wait_until="networkidle")
-            await asyncio.sleep(2)
+            logger.info("Navigating to Xero login page")
+            await self.browser.goto(XERO_LOGIN_URL, wait_until="domcontentloaded")
             
             page = self.browser.page
+            
+            # Wait for page to fully render (Xero uses React)
+            logger.info("Waiting for page to fully render")
+            await asyncio.sleep(3)
+            
+            # Try to wait for networkidle, but don't fail if it times out
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                logger.debug("networkidle timeout during page load, continuing...")
+            
+            # Take debug screenshot to see page state
+            if settings.debug_screenshots:
+                await self.browser.take_screenshot("login_page_loaded")
             
             # Step 1: Enter email
             logger.info("Entering email")
             email_input = page.get_by_role("textbox", name="Please enter your email")
-            await email_input.wait_for(state="visible", timeout=15000)
+            
+            # Wait longer for React to render the form
+            await email_input.wait_for(state="visible", timeout=30000)
             await email_input.click()
             await email_input.fill(settings.xero_email)
             
