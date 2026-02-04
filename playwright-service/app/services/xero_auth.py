@@ -513,41 +513,84 @@ class XeroAuthService:
             
             page = self.browser.page
             
-            # Navigate to Xero login page
+            # Navigate to Xero login page with retry logic for rendering issues
             logger.info("Navigating to Xero login page")
-            await page.goto(XERO_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
             
-            # Wait for page to fully render (Xero uses React with heavy JS)
-            logger.info("Waiting for page to fully render")
-            await asyncio.sleep(5)  # Increased wait for Xvfb rendering
+            max_retries = 3
+            page_loaded = False
+            screenshot_path = None
             
-            # Try to wait for networkidle, but don't fail if it times out
-            try:
-                await page.wait_for_load_state("networkidle", timeout=30000)
-            except Exception:
-                logger.debug("networkidle timeout during page load, continuing...")
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        logger.info(f"Retry attempt {attempt + 1}/{max_retries} - reloading page")
+                        await page.reload(wait_until="domcontentloaded", timeout=60000)
+                    else:
+                        await page.goto(XERO_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+                    
+                    # Wait for page to fully render (Xero uses React with heavy JS)
+                    logger.info("Waiting for page to fully render")
+                    await asyncio.sleep(3)
+                    
+                    # Wait for load state
+                    try:
+                        await page.wait_for_load_state("load", timeout=30000)
+                    except Exception:
+                        logger.debug("load state timeout, continuing...")
+                    
+                    # Additional wait for JS framework to initialize
+                    await asyncio.sleep(3)
+                    
+                    # Force a repaint by scrolling (helps with Xvfb rendering)
+                    await page.evaluate("window.scrollTo(0, 1)")
+                    await asyncio.sleep(1)
+                    await page.evaluate("window.scrollTo(0, 0)")
+                    await asyncio.sleep(2)
+                    
+                    # Take a debug screenshot
+                    screenshot_path = await self.browser.take_screenshot(f"login_page_attempt_{attempt + 1}")
+                    logger.info(f"Login page screenshot saved: {screenshot_path}")
+                    
+                    # Verify page rendered correctly by checking for expected elements
+                    # Check for multiple possible selectors to confirm page loaded
+                    form_visible = False
+                    
+                    # Try waiting for the form
+                    try:
+                        await page.wait_for_selector("form", state="visible", timeout=15000)
+                        form_visible = True
+                        logger.info("Login form detected - page rendered successfully")
+                    except Exception:
+                        logger.debug("Form not visible yet")
+                    
+                    # Also check for email input as backup
+                    if not form_visible:
+                        try:
+                            email_field = page.locator("input[type='email'], input[name='email'], input[autocomplete='username']")
+                            await email_field.wait_for(state="visible", timeout=10000)
+                            form_visible = True
+                            logger.info("Email input detected - page rendered successfully")
+                        except Exception:
+                            logger.debug("Email input not visible")
+                    
+                    if form_visible:
+                        page_loaded = True
+                        break
+                    else:
+                        logger.warning(f"Page may not have rendered correctly on attempt {attempt + 1}")
+                        
+                except Exception as e:
+                    logger.warning(f"Page load attempt {attempt + 1} failed: {e}")
+                    if attempt == max_retries - 1:
+                        raise
             
-            # Additional wait for JS framework to initialize
-            await asyncio.sleep(2)
-            
-            # Always take a debug screenshot to diagnose rendering issues
-            screenshot_path = await self.browser.take_screenshot("login_page_initial")
-            logger.info(f"Login page screenshot saved: {screenshot_path}")
-            
-            # Verify page rendered correctly by checking for expected elements
-            try:
-                # Wait for the login form to be visible - this confirms page rendered
-                await page.wait_for_selector("form", state="visible", timeout=30000)
-                logger.info("Login form detected - page rendered successfully")
-            except Exception as e:
-                logger.error(f"Login form not found - page may not have rendered correctly: {e}")
-                # Take another screenshot for debugging
+            if not page_loaded:
                 await self.browser.take_screenshot("login_page_render_failed")
                 return {
                     "success": False,
-                    "error": "Login page failed to render correctly. Check Xvfb display configuration.",
+                    "error": "Login page failed to render correctly after multiple attempts. Check Xvfb display configuration.",
                     "screenshot": screenshot_path,
-                    "details": str(e)
+                    "details": "Form elements not visible after retries"
                 }
             
             # Step 1: Enter email
