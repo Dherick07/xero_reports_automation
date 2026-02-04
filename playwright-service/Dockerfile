@@ -1,4 +1,3 @@
-<<<<<<< C:/Users/jaydh/Documents/Projects/Jaydheeeer_Github_Projects/Xero_Reports_Automation/playwright-service/Dockerfile
 # Playwright Service Dockerfile
 # Uses official Playwright Python image with browsers pre-installed
 
@@ -41,7 +40,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
 # Run with startup script that initializes Xvfb for headed browser mode
 # This is required because Xero blocks headless browsers during login
 CMD ["/app/start.sh"]
-=======
 # Playwright Service Dockerfile
 # Uses official Playwright Python image with browsers pre-installed
 
@@ -84,4 +82,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
 # Run with startup script that initializes Xvfb for headed browser mode
 # This is required because Xero blocks headless browsers during login
 CMD ["/app/start.sh"]
->>>>>>> C:/Users/jaydh/Documents/Projects/Jaydheeeer_Github_Projects/Xero_Reports_Automation/playwright-service/Dockerfile.undo_before
