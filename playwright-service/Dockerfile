@@ -6,25 +6,7 @@ FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
 WORKDIR /app
 
 # Install Xvfb for headed mode on Linux servers (virtual display)
-# Also install x11-utils for xdpyinfo, fonts for proper text rendering,
-# and mesa libraries for software OpenGL rendering
-RUN apt-get update && apt-get install -y \
-    xvfb \
-    curl \
-    x11-utils \
-    fonts-liberation \
-    fonts-noto-color-emoji \
-    fonts-freefont-ttf \
-    fonts-dejavu-core \
-    fonts-dejavu-extra \
-    fontconfig \
-    libgl1-mesa-dri \
-    libgl1-mesa-glx \
-    mesa-utils \
-    libegl1-mesa \
-    libgbm1 \
-    && fc-cache -f -v \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y xvfb curl && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
@@ -47,9 +29,6 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 # Default display for Xvfb (will be set by start.sh, but good to have as fallback)
 ENV DISPLAY=:99
-# Force software rendering for better Xvfb compatibility
-ENV LIBGL_ALWAYS_SOFTWARE=1
-ENV MESA_GL_VERSION_OVERRIDE=3.3
 
 # Expose the FastAPI port
 EXPOSE 8000

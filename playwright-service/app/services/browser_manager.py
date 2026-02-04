@@ -87,55 +87,14 @@ class BrowserManager:
             self._playwright = await async_playwright().start()
             
             # Launch browser with appropriate settings
-            # Different args for headless vs headed mode (Xvfb)
-            base_args = [
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-renderer-backgrounding",
-                "--window-size=1920,1080",
-                "--start-maximized",
-                # Improve page rendering stability
-                "--disable-extensions",
-                "--disable-component-extensions-with-background-pages",
-                "--disable-default-apps",
-                "--disable-features=TranslateUI",
-                "--disable-hang-monitor",
-                "--disable-ipc-flooding-protection",
-                "--disable-popup-blocking",
-                "--disable-prompt-on-repost",
-                "--disable-sync",
-                "--enable-features=NetworkService,NetworkServiceInProcess",
-                "--force-color-profile=srgb",
-                "--metrics-recording-only",
-            ]
-            
-            if headless:
-                # Headless mode: use new headless for better JS/CSS rendering
-                base_args.extend([
-                    "--headless=new",  # New headless mode with better rendering
-                    "--disable-gpu",
-                    "--disable-software-rasterizer",
-                ])
-            else:
-                # Headed mode (Xvfb): optimize for virtual display rendering
-                # Disable GPU acceleration to avoid Xvfb rendering issues
-                base_args.extend([
-                    "--disable-gpu",
-                    "--disable-software-rasterizer",
-                    "--disable-accelerated-2d-canvas",
-                    "--disable-accelerated-video-decode",
-                    "--force-device-scale-factor=1",
-                    "--disable-gpu-compositing",
-                    "--disable-gpu-sandbox",
-                ])
-            
             self._browser = await self._playwright.chromium.launch(
                 headless=headless,
-                args=base_args
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                ]
             )
             
             # Create browser context with download handling

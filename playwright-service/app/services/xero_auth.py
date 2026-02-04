@@ -511,94 +511,16 @@ class XeroAuthService:
             # Xero blocks headless browsers, so we need a visible browser for login
             await self.browser.initialize(headless=False)
             
+            # Navigate to Xero login page
+            await self.browser.goto(XERO_LOGIN_URL, wait_until="networkidle")
+            await asyncio.sleep(2)
+            
             page = self.browser.page
-            
-            # Navigate to Xero login page with retry logic for rendering issues
-            logger.info("Navigating to Xero login page")
-            
-            max_retries = 3
-            page_loaded = False
-            screenshot_path = None
-            
-            for attempt in range(max_retries):
-                try:
-                    if attempt > 0:
-                        logger.info(f"Retry attempt {attempt + 1}/{max_retries} - reloading page")
-                        await page.reload(wait_until="domcontentloaded", timeout=60000)
-                    else:
-                        await page.goto(XERO_LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-                    
-                    # Wait for page to fully render (Xero uses React with heavy JS)
-                    logger.info("Waiting for page to fully render")
-                    await asyncio.sleep(3)
-                    
-                    # Wait for load state
-                    try:
-                        await page.wait_for_load_state("load", timeout=30000)
-                    except Exception:
-                        logger.debug("load state timeout, continuing...")
-                    
-                    # Additional wait for JS framework to initialize
-                    await asyncio.sleep(3)
-                    
-                    # Force a repaint by scrolling (helps with Xvfb rendering)
-                    await page.evaluate("window.scrollTo(0, 1)")
-                    await asyncio.sleep(1)
-                    await page.evaluate("window.scrollTo(0, 0)")
-                    await asyncio.sleep(2)
-                    
-                    # Take a debug screenshot
-                    screenshot_path = await self.browser.take_screenshot(f"login_page_attempt_{attempt + 1}")
-                    logger.info(f"Login page screenshot saved: {screenshot_path}")
-                    
-                    # Verify page rendered correctly by checking for expected elements
-                    # Check for multiple possible selectors to confirm page loaded
-                    form_visible = False
-                    
-                    # Try waiting for the form
-                    try:
-                        await page.wait_for_selector("form", state="visible", timeout=15000)
-                        form_visible = True
-                        logger.info("Login form detected - page rendered successfully")
-                    except Exception:
-                        logger.debug("Form not visible yet")
-                    
-                    # Also check for email input as backup
-                    if not form_visible:
-                        try:
-                            email_field = page.locator("input[type='email'], input[name='email'], input[autocomplete='username']")
-                            await email_field.wait_for(state="visible", timeout=10000)
-                            form_visible = True
-                            logger.info("Email input detected - page rendered successfully")
-                        except Exception:
-                            logger.debug("Email input not visible")
-                    
-                    if form_visible:
-                        page_loaded = True
-                        break
-                    else:
-                        logger.warning(f"Page may not have rendered correctly on attempt {attempt + 1}")
-                        
-                except Exception as e:
-                    logger.warning(f"Page load attempt {attempt + 1} failed: {e}")
-                    if attempt == max_retries - 1:
-                        raise
-            
-            if not page_loaded:
-                await self.browser.take_screenshot("login_page_render_failed")
-                return {
-                    "success": False,
-                    "error": "Login page failed to render correctly after multiple attempts. Check Xvfb display configuration.",
-                    "screenshot": screenshot_path,
-                    "details": "Form elements not visible after retries"
-                }
             
             # Step 1: Enter email
             logger.info("Entering email")
             email_input = page.get_by_role("textbox", name="Please enter your email")
-            
-            # Wait longer for React to render the form
-            await email_input.wait_for(state="visible", timeout=30000)
+            await email_input.wait_for(state="visible", timeout=15000)
             await email_input.click()
             await email_input.fill(settings.xero_email)
             
