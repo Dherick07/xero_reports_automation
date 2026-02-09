@@ -87,14 +87,28 @@ class BrowserManager:
             self._playwright = await async_playwright().start()
             
             # Launch browser with appropriate settings
+            launch_args = [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+            ]
+
+            if not headless:
+                launch_args.extend(
+                    [
+                        "--window-size=1920,1080",
+                        "--window-position=0,0",
+                        "--force-device-scale-factor=1",
+                    ]
+                )
+
+                # On Linux virtual displays, disabling GPU can reduce rendering/compositing artifacts.
+                if os.name != "nt":
+                    launch_args.append("--disable-gpu")
+
             self._browser = await self._playwright.chromium.launch(
                 headless=headless,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-dev-shm-usage",
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                ]
+                args=launch_args,
             )
             
             # Create browser context with download handling

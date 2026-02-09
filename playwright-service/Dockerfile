@@ -6,7 +6,7 @@ FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
 WORKDIR /app
 
 # Install Xvfb for headed mode on Linux servers (virtual display)
-RUN apt-get update && apt-get install -y xvfb curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y xvfb x11-utils curl && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .

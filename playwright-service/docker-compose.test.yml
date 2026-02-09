@@ -1,0 +1,34 @@
+# Docker Compose for LOCAL TESTING of Xvfb rendering fixes
+# Emulates the DigitalOcean Ubuntu 24.04 droplet environment
+# Uses Supabase database (same as production)
+#
+# Usage:
+#   1. Ensure .env file has all credentials (DATABASE_URL, API_KEY, XERO_* etc.)
+#   2. Build:  docker-compose -f docker-compose.test.yml build --no-cache
+#   3. Start:  docker-compose -f docker-compose.test.yml up
+#   4. Test:   curl http://localhost:8001/api/health
+#   5. Stop:   docker-compose -f docker-compose.test.yml down
+#
+# Port 8001 is used to avoid conflicts with any existing local dev setup on 8000.
+
+services:
+  playwright-service-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: playwright-service-test
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    environment:
+      - PGBOUNCER_MODE=true
+      - DOWNLOAD_DIR=/app/downloads
+      - SCREENSHOT_DIR=/app/screenshots
+      - SESSION_DIR=/app/sessions
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./downloads:/app/downloads
+      - ./screenshots:/app/screenshots
+      - ./sessions:/app/sessions
+    shm_size: '2gb'

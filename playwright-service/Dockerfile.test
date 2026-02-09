@@ -1,0 +1,91 @@
+# Test Dockerfile - Emulates DigitalOcean Ubuntu 24.04 droplet environment
+# Purpose: Test Xvfb rendering fixes locally before deploying to production
+#
+# This builds from Ubuntu 24.04 (noble) to match the production droplet OS,
+# rather than using the Playwright pre-built image (which is Ubuntu 22.04 Jammy).
+
+FROM ubuntu:24.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /app
+
+# Install system dependencies matching what a fresh Ubuntu 24.04 droplet would have
+RUN apt-get update && apt-get install -y \
+    # Python
+    python3 \
+    python3-pip \
+    python3-venv \
+    # Xvfb and X11 utilities (for headed browser mode)
+    xvfb \
+    x11-utils \
+    # Networking tools
+    curl \
+    wget \
+    # Playwright system dependencies (Chromium needs these)
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libatspi2.0-0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2t64 \
+    libwayland-client0 \
+    # Additional libraries that may be needed
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    libvulkan1 \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a symlink for python -> python3 (Ubuntu 24.04 only has python3)
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
+
+# Install Playwright browsers (Chromium only, matching production)
+RUN python -m playwright install chromium
+# Install Playwright system dependencies that might have been missed
+RUN python -m playwright install-deps chromium || true
+
+# Copy application code
+COPY app/ ./app/
+COPY scripts/ ./scripts/
+COPY run.py ./run.py
+COPY start.sh ./start.sh
+
+# Fix line endings (Windows -> Unix) and make startup script executable
+RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
+
+# Create directories for downloads, screenshots, and sessions
+RUN mkdir -p /app/downloads /app/screenshots /app/sessions
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+# Default display for Xvfb (will be set by start.sh, but good to have as fallback)
+ENV DISPLAY=:99
+
+# Expose the FastAPI port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=45s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
+
+# Run with startup script that initializes Xvfb for headed browser mode
+CMD ["/app/start.sh"]

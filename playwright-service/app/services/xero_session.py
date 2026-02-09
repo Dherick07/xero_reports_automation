@@ -77,9 +77,12 @@ class XeroSessionService:
             # Encrypt cookies
             encrypted_cookies = self.encryption.encrypt_json(cookies)
             
-            # Default expiry: 2 weeks from now (timezone-aware)
+            # Default expiry: 2 weeks from now
+            # Use naive UTC datetimes (no tzinfo) to match TIMESTAMP WITHOUT TIME ZONE columns
             if expires_at is None:
-                expires_at = datetime.now(timezone.utc) + timedelta(weeks=2)
+                expires_at = datetime.utcnow() + timedelta(weeks=2)
+            elif expires_at.tzinfo is not None:
+                expires_at = expires_at.replace(tzinfo=None)
             
             # Check if session exists
             result = await self.db.execute(
@@ -91,7 +94,7 @@ class XeroSessionService:
                 # Update existing session
                 existing.cookies = encrypted_cookies
                 existing.expires_at = expires_at
-                existing.updated_at = datetime.now(timezone.utc)
+                existing.updated_at = datetime.utcnow()
             else:
                 # Create new session
                 session = XeroSession(

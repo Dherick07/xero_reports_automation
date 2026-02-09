@@ -14,6 +14,7 @@ import calendar
 import structlog
 import asyncio
 import os
+import re
 
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeout
 
@@ -297,6 +298,83 @@ class XeroAutomation:
             return await self.browser.take_screenshot(name)
         return None
     
+    def _get_current_shortcode(self) -> Optional[str]:
+        """
+        Extract the tenant shortcode from the current browser URL.
+        
+        Xero URLs contain the shortcode in the format:
+            https://go.xero.com/app/!{shortcode}/...
+        
+        Returns:
+            The shortcode string (without '!') or None if not found
+        """
+        current_url = self.page.url
+        match = re.search(r'/app/!([^/]+)/', current_url)
+        if match:
+            return match.group(1)
+        # Also try without trailing slash (e.g. /app/!shortcode at end of URL)
+        match = re.search(r'/app/!([^/]+)$', current_url)
+        if match:
+            return match.group(1)
+        return None
+    
+    async def _verify_tenant_shortcode(self, expected_shortcode: str) -> dict:
+        """
+        Verify the current browser URL contains the expected tenant shortcode.
+        
+        This is the most reliable way to confirm we're on the correct tenant,
+        since the URL shortcode is unique per tenant and always present.
+        
+        Args:
+            expected_shortcode: The expected tenant shortcode (e.g., "mkK34")
+            
+        Returns:
+            Dict with 'valid' bool and details
+        """
+        current_shortcode = self._get_current_shortcode()
+        current_url = self.page.url
+        
+        if current_shortcode is None:
+            logger.warning(
+                "Could not extract shortcode from URL",
+                url=current_url,
+                expected=expected_shortcode
+            )
+            return {
+                "valid": False,
+                "current_shortcode": None,
+                "expected_shortcode": expected_shortcode,
+                "url": current_url,
+                "reason": "Could not extract shortcode from current URL"
+            }
+        
+        if current_shortcode == expected_shortcode:
+            logger.info(
+                "Tenant shortcode verified",
+                shortcode=current_shortcode,
+                url=current_url
+            )
+            return {
+                "valid": True,
+                "current_shortcode": current_shortcode,
+                "expected_shortcode": expected_shortcode,
+                "url": current_url
+            }
+        
+        logger.error(
+            "Tenant shortcode MISMATCH - wrong tenant!",
+            current_shortcode=current_shortcode,
+            expected_shortcode=expected_shortcode,
+            url=current_url
+        )
+        return {
+            "valid": False,
+            "current_shortcode": current_shortcode,
+            "expected_shortcode": expected_shortcode,
+            "url": current_url,
+            "reason": f"Shortcode mismatch: expected '{expected_shortcode}' but got '{current_shortcode}'"
+        }
+    
     async def switch_tenant(self, target_tenant: str, tenant_shortcode: str = None) -> dict:
         """
         Switch to a specified Xero tenant/organisation.
@@ -327,9 +405,19 @@ class XeroAutomation:
             current_tenant = await self._get_current_tenant_name()
             logger.info(f"Current tenant: {current_tenant}")
             
-            # Check if already on the target tenant (case-insensitive comparison)
-            if current_tenant:
-                # Normalize both names for comparison
+            # Check if already on the target tenant using URL shortcode (most reliable)
+            if tenant_shortcode:
+                current_shortcode = self._get_current_shortcode()
+                if current_shortcode == tenant_shortcode:
+                    logger.info(f"Already on target tenant (shortcode match): {current_tenant}")
+                    return {
+                        "success": True,
+                        "current_tenant": current_tenant,
+                        "switched": False,
+                        "message": "Already on the requested tenant (shortcode verified)"
+                    }
+            elif current_tenant:
+                # Fallback: name-based comparison when no shortcode provided
                 current_normalized = current_tenant.lower().strip()
                 target_normalized = target_tenant.lower().strip()
                 
@@ -357,43 +445,35 @@ class XeroAutomation:
                     
                     await self._take_debug_screenshot("switch_tenant_url_complete")
                     
-                    # Verify switch was successful
-                    new_tenant = await self._get_current_tenant_name()
-                    logger.info(f"Tenant after URL switch: {new_tenant}")
+                    # Verify switch using URL shortcode (most reliable check)
+                    verification = await self._verify_tenant_shortcode(tenant_shortcode)
                     
-                    # Check if we're on the right tenant
-                    if new_tenant:
-                        new_normalized = new_tenant.lower().strip()
-                        target_normalized = target_tenant.lower().strip()
-                        
-                        if new_normalized == target_normalized or target_normalized in new_normalized:
-                            logger.info(f"Successfully switched to tenant via URL: {new_tenant}")
-                            return {
-                                "success": True,
-                                "current_tenant": new_tenant,
-                                "switched": True,
-                                "previous_tenant": current_tenant,
-                                "method": "url"
-                            }
-                        else:
-                            # URL worked but tenant name doesn't match exactly - still success
-                            return {
-                                "success": True,
-                                "current_tenant": new_tenant,
-                                "switched": True,
-                                "previous_tenant": current_tenant,
-                                "method": "url",
-                                "warning": "Tenant name may not match exactly"
-                            }
-                    else:
-                        # Couldn't get tenant name but URL navigation succeeded
+                    if verification["valid"]:
+                        new_tenant = await self._get_current_tenant_name()
+                        logger.info(f"Successfully switched to tenant via URL: {new_tenant} (shortcode verified: {tenant_shortcode})")
                         return {
                             "success": True,
-                            "current_tenant": None,
+                            "current_tenant": new_tenant,
                             "switched": True,
                             "previous_tenant": current_tenant,
                             "method": "url",
-                            "warning": "Could not verify tenant name after switch"
+                            "shortcode_verified": True
+                        }
+                    else:
+                        # Shortcode mismatch after URL navigation — this is a real failure
+                        logger.error(
+                            "Tenant switch via URL failed - shortcode mismatch after navigation",
+                            expected=tenant_shortcode,
+                            actual=verification.get("current_shortcode"),
+                            url=verification.get("url")
+                        )
+                        screenshot = await self.browser.take_screenshot("switch_tenant_shortcode_mismatch")
+                        return {
+                            "success": False,
+                            "error": f"Tenant switch failed: {verification.get('reason')}",
+                            "expected_shortcode": tenant_shortcode,
+                            "actual_shortcode": verification.get("current_shortcode"),
+                            "screenshot": screenshot
                         }
                         
                 except Exception as e:
@@ -506,10 +586,33 @@ class XeroAutomation:
             
             await self._take_debug_screenshot("switch_tenant_complete")
             
-            # Verify switch was successful
+            # Verify switch was successful using URL shortcode (most reliable)
             new_tenant = await self._get_current_tenant_name()
             logger.info(f"Tenant after switch: {new_tenant}")
             
+            if tenant_shortcode:
+                verification = await self._verify_tenant_shortcode(tenant_shortcode)
+                if verification["valid"]:
+                    logger.info(f"Successfully switched to tenant: {new_tenant} (shortcode verified)")
+                    return {
+                        "success": True,
+                        "current_tenant": new_tenant,
+                        "switched": True,
+                        "previous_tenant": current_tenant,
+                        "shortcode_verified": True
+                    }
+                else:
+                    logger.error(f"UI tenant switch failed - shortcode mismatch: {verification.get('reason')}")
+                    screenshot = await self.browser.take_screenshot("switch_tenant_ui_mismatch")
+                    return {
+                        "success": False,
+                        "error": f"Tenant switch failed: {verification.get('reason')}",
+                        "expected_shortcode": tenant_shortcode,
+                        "actual_shortcode": verification.get("current_shortcode"),
+                        "screenshot": screenshot
+                    }
+            
+            # No shortcode provided — fall back to name-based verification
             if new_tenant:
                 new_normalized = new_tenant.lower().strip()
                 target_normalized = target_tenant.lower().strip()
@@ -523,13 +626,13 @@ class XeroAutomation:
                         "previous_tenant": current_tenant
                     }
             
-            # Switch may have worked but name doesn't match exactly
+            # Name doesn't match and no shortcode to verify — fail
+            screenshot = await self.browser.take_screenshot("switch_tenant_name_mismatch")
             return {
-                "success": True,
+                "success": False,
+                "error": f"Tenant switch verification failed: expected '{target_tenant}' but got '{new_tenant}'",
                 "current_tenant": new_tenant,
-                "switched": True,
-                "previous_tenant": current_tenant,
-                "warning": "Tenant name may not match exactly"
+                "screenshot": screenshot
             }
                 
         except Exception as e:
@@ -663,6 +766,24 @@ class XeroAutomation:
             except Exception:
                 logger.debug("networkidle timeout, continuing anyway...")
             await asyncio.sleep(3)
+            
+            # Verify we're on the correct tenant before downloading
+            if tenant_shortcode:
+                verification = await self._verify_tenant_shortcode(tenant_shortcode)
+                if not verification["valid"]:
+                    logger.error(
+                        "Wrong tenant detected before Payroll Activity Summary download",
+                        expected=tenant_shortcode,
+                        actual=verification.get("current_shortcode")
+                    )
+                    screenshot = await self.browser.take_screenshot("payroll_wrong_tenant")
+                    return {
+                        "success": False,
+                        "error": f"Wrong tenant: {verification.get('reason')}. Aborting download to prevent data mix-up.",
+                        "expected_shortcode": tenant_shortcode,
+                        "actual_shortcode": verification.get("current_shortcode"),
+                        "screenshot": screenshot
+                    }
             
             await self._take_debug_screenshot("payroll_start")
             
@@ -819,6 +940,24 @@ class XeroAutomation:
             except Exception:
                 logger.debug("networkidle timeout, continuing anyway...")
             await asyncio.sleep(3)  # Extra time for JavaScript to render navigation
+            
+            # Verify we're on the correct tenant before downloading
+            if tenant_shortcode:
+                verification = await self._verify_tenant_shortcode(tenant_shortcode)
+                if not verification["valid"]:
+                    logger.error(
+                        "Wrong tenant detected before Activity Statement download",
+                        expected=tenant_shortcode,
+                        actual=verification.get("current_shortcode")
+                    )
+                    screenshot = await self.browser.take_screenshot("activity_wrong_tenant")
+                    return {
+                        "success": False,
+                        "error": f"Wrong tenant: {verification.get('reason')}. Aborting download to prevent data mix-up.",
+                        "expected_shortcode": tenant_shortcode,
+                        "actual_shortcode": verification.get("current_shortcode"),
+                        "screenshot": screenshot
+                    }
             
             await self._take_debug_screenshot("activity_start")
             
